@@ -54,9 +54,14 @@ class Worker(object):
         self.loop = True
         while self.loop:
             _, task = client(self.cluster.redis).blpop(self.queue, 0)
-            print task
             cmd, args, answer, job_id = json.loads(task)
-            self._on[cmd](Context(self, answer, job_id), *args)
+            resp = self._on[cmd](Context(self, answer, job_id), *args)
+            if answer and resp is not None:
+                if type(resp) is tuple:
+                    resp = list(resp)
+                if type(resp) is not list:
+                    resp = [resp]
+                client(answer).execute_command(cmd, job_id, json.dumps(resp))
 
 
 class Cluster(object):
@@ -67,13 +72,3 @@ class Cluster(object):
 
     def worker(self, queue):
         return Worker(self, queue)
-
-if __name__ == '__main__':
-    app = Cluster()
-    worker = app.worker('main')
-
-    @worker.on('test')
-    def test(context, name):
-        return "Hello %s!" % name
-
-    worker.run()
